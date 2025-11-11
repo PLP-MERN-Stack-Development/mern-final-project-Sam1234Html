@@ -1,0 +1,530 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Home, List, PlusCircle, Search, Trash2, Edit, LogIn, UserPlus, LogOut, ArrowLeft } from 'lucide-react';
+
+// --- MOCK DATABASE (Simulating MongoDB/Express) ---
+const initialRecipes = [
+  { id: 1, title: "Classic Carbonara", description: "Authentic Roman pasta dish with guanciale, egg yolks, and Pecorino Romano.", ingredients: ["Spaghetti", "Guanciale", "Egg Yolks", "Pecorino Romano", "Black Pepper"], steps: "Fry guanciale, mix eggs/cheese, combine with pasta water.", prepTime: "20 min", authorId: 'user123', authorName: 'Chef Alpha' },
+  { id: 2, title: "Vegan Lentil Soup", description: "Hearty and nutritious soup perfect for a cold day.", ingredients: ["Red Lentils", "Carrots", "Celery", "Onion", "Vegetable Broth"], steps: "Sauté veggies, add lentils and broth, simmer until tender.", prepTime: "45 min", authorId: 'user456', authorName: 'Cook Beta' },
+  { id: 3, title: "Overnight Oats", description: "A simple and quick breakfast meal prep option.", ingredients: ["Rolled Oats", "Milk", "Chia Seeds", "Maple Syrup"], steps: "Mix all ingredients in a jar and refrigerate overnight.", prepTime: "5 min", authorId: 'user123', authorName: 'Chef Alpha' },
+];
+
+const mockAuth = {
+  // Simulating the user object retrieved from a JWT
+  currentUser: null,
+  // Mock login function
+  login: async (username, password) => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (username === 'test' && password === 'password') {
+          const user = { id: 'user123', name: 'Chef Alpha', username: 'test' };
+          mockAuth.currentUser = user;
+          resolve(user);
+        } else {
+          resolve(null);
+        }
+      }, 500);
+    });
+  },
+  // Mock logout function
+  logout: () => {
+    mockAuth.currentUser = null;
+  }
+};
+
+// --- API SIMULATION FUNCTIONS ---
+
+const API_DELAY = 500;
+
+// Simulate fetching all recipes from the backend
+const fetchRecipes = async () => new Promise(resolve => setTimeout(() => resolve(initialRecipes), API_DELAY));
+
+// Simulate fetching a single recipe
+const fetchRecipeById = async (id) => new Promise(resolve => setTimeout(() => resolve(initialRecipes.find(r => r.id === id)), API_DELAY));
+
+// Simulate creating a new recipe
+const createRecipe = async (recipe) => new Promise(resolve => {
+  setTimeout(() => {
+    const newRecipe = { ...recipe, id: Date.now(), authorId: mockAuth.currentUser.id, authorName: mockAuth.currentUser.name };
+    initialRecipes.push(newRecipe);
+    resolve(newRecipe);
+  }, API_DELAY);
+});
+
+// Simulate updating a recipe
+const updateRecipe = async (id, updatedFields) => new Promise(resolve => {
+  setTimeout(() => {
+    const index = initialRecipes.findIndex(r => r.id === id);
+    if (index !== -1) {
+      initialRecipes[index] = { ...initialRecipes[index], ...updatedFields };
+      resolve(initialRecipes[index]);
+    } else {
+      resolve(null);
+    }
+  }, API_DELAY);
+});
+
+// Simulate deleting a recipe
+const deleteRecipe = async (id) => new Promise(resolve => {
+  setTimeout(() => {
+    const index = initialRecipes.findIndex(r => r.id === id);
+    if (index !== -1) {
+      initialRecipes.splice(index, 1);
+      resolve(true);
+    } else {
+      resolve(false);
+    }
+  }, API_DELAY);
+});
+
+// --- COMPONENTS ---
+
+/**
+ * Recipe Card Component
+ */
+const RecipeCard = ({ recipe, onView }) => (
+  <div className="bg-white border border-gray-100 rounded-xl shadow-lg hover:shadow-xl transition duration-300 overflow-hidden">
+    <div className="p-5">
+      <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">{recipe.title}</h3>
+      <p className="text-sm text-gray-500 mb-4 line-clamp-2">{recipe.description}</p>
+      <div className="flex justify-between items-center text-xs text-gray-600">
+        <span className="flex items-center">
+          <List className="w-3 h-3 mr-1" />
+          {recipe.ingredients.length} Ingredients
+        </span>
+        <span className="flex items-center">
+          <Home className="w-3 h-3 mr-1" />
+          {recipe.prepTime}
+        </span>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={() => onView(recipe.id)}
+          className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md"
+        >
+          View Recipe
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/**
+ * Recipe Detail Component
+ */
+const RecipeDetail = ({ recipeId, setRoute, isAuthenticated, userId }) => {
+  const [recipe, setRecipe] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchRecipeById(recipeId)
+      .then(data => {
+        if (data) {
+          setRecipe(data);
+          setError(null);
+        } else {
+          setError("Recipe not found.");
+        }
+      })
+      .catch(err => setError("Failed to load recipe."))
+      .finally(() => setLoading(false));
+  }, [recipeId]);
+
+  const handleDelete = useCallback(async () => {
+    if (window.confirm(`Are you sure you want to delete "${recipe.title}"?`)) {
+      setLoading(true);
+      await deleteRecipe(recipe.id);
+      alert('Recipe deleted successfully!');
+      setRoute('home');
+    }
+  }, [recipe, setRoute]);
+
+  if (loading) return <div className="text-center py-10 text-gray-500">Loading recipe details...</div>;
+  if (error) return <div className="text-center py-10 text-red-600 font-semibold">{error}</div>;
+  if (!recipe) return null;
+
+  const isAuthor = isAuthenticated && userId === recipe.authorId;
+
+  return (
+    <div className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-2xl">
+      <div className="flex justify-between items-start mb-6">
+        <button onClick={() => setRoute('home')} className="flex items-center text-indigo-600 hover:text-indigo-800 transition duration-150">
+          <ArrowLeft className="w-5 h-5 mr-1" />
+          Back to Recipes
+        </button>
+        {isAuthor && (
+          <div className="flex space-x-3">
+            <button onClick={() => setRoute('edit', recipe.id)} className="p-2 text-blue-600 hover:text-blue-800 rounded-full transition duration-150 bg-blue-50">
+              <Edit className="w-5 h-5" />
+            </button>
+            <button onClick={handleDelete} className="p-2 text-red-600 hover:text-red-800 rounded-full transition duration-150 bg-red-50">
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <h1 className="text-4xl font-extrabold text-gray-900 mb-3">{recipe.title}</h1>
+      <p className="text-sm text-gray-500 mb-6">By {recipe.authorName} | Prep Time: {recipe.prepTime}</p>
+
+      <p className="text-lg text-gray-700 mb-8 p-4 bg-gray-50 rounded-lg border-l-4 border-indigo-500">{recipe.description}</p>
+
+      <div className="grid md:grid-cols-2 gap-10">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Ingredients</h2>
+          <ul className="list-disc list-inside space-y-2 text-gray-700 ml-4">
+            {recipe.ingredients.map((ing, index) => (
+              <li key={index} className="text-base">{ing}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Instructions</h2>
+          <ol className="list-decimal list-inside space-y-3 text-gray-700 ml-4">
+            {recipe.steps.split(',').map((step, index) => (
+              <li key={index} className="text-base">{step.trim()}</li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Recipe Form Component (Create/Edit)
+ */
+const RecipeForm = ({ initialRecipe = {}, setRoute, userId }) => {
+  const isEditing = !!initialRecipe.id;
+  const [formData, setFormData] = useState({
+    title: initialRecipe.title || '',
+    description: initialRecipe.description || '',
+    ingredients: (initialRecipe.ingredients || []).join('\n'), // Store as newline-separated string
+    steps: initialRecipe.steps || '',
+    prepTime: initialRecipe.prepTime || '',
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!userId) {
+      alert("You must be logged in to create or edit recipes.");
+      return;
+    }
+
+    setLoading(true);
+
+    const recipePayload = {
+      ...formData,
+      // Convert ingredients string back to array
+      ingredients: formData.ingredients.split('\n').map(i => i.trim()).filter(i => i),
+    };
+
+    try {
+      if (isEditing) {
+        await updateRecipe(initialRecipe.id, recipePayload);
+        alert('Recipe updated successfully!');
+        setRoute('detail', initialRecipe.id);
+      } else {
+        await createRecipe(recipePayload);
+        alert('Recipe created successfully!');
+        setRoute('home');
+      }
+    } catch (error) {
+      alert(`Error: ${isEditing ? 'updating' : 'creating'} recipe.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-2xl">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-3">{isEditing ? 'Edit Recipe' : 'Create New Recipe'}</h1>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Title</label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Description</label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            rows="3"
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          ></textarea>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Ingredients (one per line)</label>
+          <textarea
+            name="ingredients"
+            value={formData.ingredients}
+            onChange={handleChange}
+            rows="5"
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          ></textarea>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Steps (comma-separated short instructions)</label>
+          <input
+            type="text"
+            name="steps"
+            value={formData.steps}
+            onChange={handleChange}
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Preparation Time (e.g., 30 min)</label>
+          <input
+            type="text"
+            name="prepTime"
+            value={formData.prepTime}
+            onChange={handleChange}
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          />
+        </div>
+
+        <div className="pt-4 flex justify-between">
+          <button
+            type="button"
+            onClick={() => setRoute('home')}
+            className="px-6 py-3 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition duration-150"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className={`px-6 py-3 text-sm font-medium rounded-lg text-white ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-md'} transition duration-150`}
+          >
+            {loading ? 'Processing...' : (isEditing ? 'Save Changes' : 'Publish Recipe')}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+/**
+ * Login/Register Component
+ */
+const AuthScreen = ({ setAuthUser, setRoute }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    if (isLogin) {
+      const user = await mockAuth.login(username, password);
+      if (user) {
+        setAuthUser(user);
+        setRoute('home');
+      } else {
+        setError("Login failed. Use 'test' / 'password'");
+      }
+    } else {
+      // Mock Registration
+      alert('Mock Registration Successful! Please log in with the provided credentials: test / password');
+      setIsLogin(true);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="max-w-md mx-auto bg-white p-8 rounded-xl shadow-2xl mt-12">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6 text-center">
+        {isLogin ? 'Sign In' : 'Register Account'}
+      </h1>
+      <form onSubmit={handleAuth} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 border"
+          />
+        </div>
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full py-3 text-lg font-medium rounded-lg text-white ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-md'} transition duration-150`}
+        >
+          {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+        </button>
+      </form>
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => setIsLogin(!isLogin)}
+          className="text-sm text-indigo-600 hover:text-indigo-800"
+        >
+          {isLogin ? 'Need an account? Register' : 'Already have an account? Sign In'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+/**
+ * Home Screen (Recipe List/Search)
+ */
+const HomeScreen = ({ setRoute }) => {
+  const [recipes, setRecipes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const loadRecipes = useCallback(() => {
+    setLoading(true);
+    fetchRecipes()
+      .then(data => {
+        setRecipes(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        // In a real app, this would be global state or a toast message
+        alert('Failed to load recipes. Please check API connection.');
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadRecipes();
+  }, [loadRecipes]);
+
+  // Client-side search filtering
+  const filteredRecipes = useMemo(() => {
+    if (!searchTerm) return recipes;
+    const lowerCaseSearch = searchTerm.toLowerCase();
+    return recipes.filter(recipe =>
+      recipe.title.toLowerCase().includes(lowerCaseSearch) ||
+      recipe.description.toLowerCase().includes(lowerCaseSearch) ||
+      recipe.ingredients.some(ing => ing.toLowerCase().includes(lowerCaseSearch))
+    );
+  }, [recipes, searchTerm]);
+
+  if (loading) return <div className="text-center py-20 text-gray-500">Fetching delicious recipes...</div>;
+
+  return (
+    <div className="py-8">
+      <div className="flex justify-between items-center mb-6 max-w-4xl mx-auto">
+        <h1 className="text-4xl font-extrabold text-gray-900">Featured Recipes</h1>
+        <button
+          onClick={() => setRoute('create')}
+          className="flex items-center px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition duration-150 shadow-md"
+        >
+          <PlusCircle className="w-5 h-5 mr-2" />
+          New Recipe
+        </button>
+      </div>
+
+      <div className="max-w-4xl mx-auto mb-8 relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search recipes by title or ingredient..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-inner focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
+        />
+      </div>
+
+      {filteredRecipes.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl shadow-lg max-w-4xl mx-auto">
+          <p className="text-xl text-gray-500">No recipes found matching "{searchTerm}".</p>
+          <p className="text-md text-gray-400 mt-2">Try adjusting your search or create a new recipe!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+          {filteredRecipes.map(recipe => (
+            <RecipeCard key={recipe.id} recipe={recipe} onView={(id) => setRoute('detail', id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- MAIN APPLICATION COMPONENT ---
+
+const App = () => {
+  // State for simple client-side routing
+  const [route, setRoute] = useState('home'); // 'home', 'detail', 'create', 'edit', 'login', 'register'
+  const [routeParam, setRouteParam] = useState(null); // Used for recipe ID in detail/edit
+
+  // State for mock authentication
+  const [authUser, setAuthUser] = useState(mockAuth.currentUser);
+
+  // Helper function to handle navigation with optional parameters
+  const handleSetRoute = useCallback((newRoute, param = null) => {
+    // Check if the route requires authentication (e.g., create/edit)
+    if (['create', 'edit'].includes(newRoute) && !authUser) {
+      alert("Please log in to manage recipes.");
+      setRoute('login');
+      return;
+    }
+    setRoute(newRoute);
+    setRouteParam(param);
+  }, [authUser]);
+
+  const handleLogout = useCallback(() => {
+    mockAuth.logout();
+    setAuthUser(null);
+    handleSetRoute('home');
+    alert('Logged out successfully!');
+  }, [handleSetRoute]);
+
+  // Renders the main content based on the current route
+  const renderContent = () => {
+    switch (route) {
+      case 'home':
+        return <HomeScreen setRoute={handleSetRoute} />;
+      case 'detail':
+        return <RecipeDetail recipeId={routeParam} setRoute={handleSetRoute} isAuthenticated={!!authUser} userId={authUser?.id} />;
+      case 'create':
+        return <RecipeForm setRoute={handleSetRoute} userId={authUser?.id} />;
+      case 'edit':
+        // Find the recipe data for editing (mocking a pre-fetch for the form)
+        const recipeToEdit = initialRecipes.find(r => r.id === routeParam);
+        if (!recipeToEdit) return <div className="text-center py-10 text-red-600 font-semibold">Recipe to edit not found.</div>;
+        return <RecipeForm initialRecipe={recipeToEdit} setRoute={handleSet
